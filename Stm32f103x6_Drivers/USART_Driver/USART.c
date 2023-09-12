@@ -1,342 +1,278 @@
 /******************************************************************************
- * Module: GPIO
- * File Name: gpio.c
- * Description: Source file for GPIO driver for Stm32f103x6
+ * Module: USART
+ * File Name: USART.c
+ * Description: Source file for USART driver for Atmega32
  * Author: Ehab Mohamed Abdelhamed
  ******************************************************************************/
 
 /*******************************************************************************
  *                             Includes			                            	*
  *******************************************************************************/
-#include "stm32f103x6.h"
-#include "USART.h"
-#include "RCC.h"
-#include "GPIO.h"
+#include "Atmega32.h"
 #include <math.h>
+#include "USART.h"
+#include "Atmega32_interrupt.h"
 
-/*******************************************************************************
- *                            			Global Variables	                   				*
- *******************************************************************************/
-static void (*GP__callBackFunc[NUM_OF_UART_IRQ])(void)={NULL,NULL,NULL};
 
-/*******************************************************************************
- *                            			Macros	                   				*
- *******************************************************************************/
-USART_TypeDef *USART_instance[NUM_OF_UART_INSTANCES]= {USART1,USART2,USART3};
-USART_Config_t *Global_USART_Config[NUM_OF_UART_INSTANCES]={NULL,NULL,NULL};
-
+void (*GP_callBackFUNC[3])();
 /*******************************************************************************
  *                            	Function Definition	                   			*
  *******************************************************************************/
 /************************************************************************************
  * Function Name	: MCAL_USART_init
  * Description		: Functional responsible for Initialize the USART device by:
- * 1.Enable UART Clock
- * 2.Enable UART
- * 3.Setup the Frame format like number of data bits, parity bit type and number of stop bits.
- * 4.Setup the USART baud rate.
- * 5.Enable/Disable hardware flow control RTS/CTS
- * 6.Enable TX/RX
+ * 1. Setup the Frame format like number of data bits, parity bit type and number of stop bits.
+ * 2. Setup the USART baud rate.
+ * 3. Enable the USART.
  * Parameters (in)	: USARTConfig- pointer to USART configuration parameters
- * 					  [baud rate - Number of data bits -Parity type - Number of stop bits]
- *  				  USARTx_ID - ID Number of UART instance
+ * [baud rate - Number of data bits -Parity type - Number of stop bits]
  * Return value		: None
- * Note				: Stm32f103x6 Support only UART1 and UART2
+ * Note				: None
  ************************************************************************************/
-void MCAL_USART_init(USART_Instance_e USARTx_ID,USART_Config_t *USARTConfig){
-	uint32 Fclk=0;				//to store The APBx clock
-	uint16 Mantissa;			//to store the integer value of UBRR
-	uint8 Friction;				//to store the friction value of UBRR
-	uint32 Mantissa_Mul100;
-	uint32 Div_Mul100;
-	USART_TypeDef * USARTx;		//to store the base address of USART instance
-	boolean error = FALSE;
-	USARTx = USART_instance[USARTx_ID];
-	//Check if inputs is invalid
-	if(USARTx == NULL ||USARTConfig == NULL ){
-		error = TRUE;
-	}
-	if(error == FALSE){
-		Global_USART_Config[USARTx_ID] = USARTConfig;
-		/***** 1.Enable UART Clock *****/
-		if(USARTx_ID == USART1_ID){
-			RCC_USART1_CLK_EN();
-			Fclk =MCAL_RCC_GetPCLK2();
-		}else if(USARTx_ID == USART2_ID){
-			RCC_USART2_CLK_EN();
-			Fclk =MCAL_RCC_GetPCLK1();
-		}else if(USARTx_ID == USART3_ID){
-			RCC_USART3_CLK_EN();
-			Fclk =MCAL_RCC_GetPCLK1();
-		}
-		/***** 2.Enable UART *****/
-		USARTx->CR1.bit.UE = TRUE;
-		/***3.Setup the Frame format >> number of data bits, parity bit type and number of stop bits.***/
-		USARTx->CR1.bit.M = USARTConfig->Data_Length;
-		USARTx->CR1.bit.PS_PCE = USARTConfig->Parity;
-		USARTx->CR2.bit.STOP = USARTConfig->Stop_Bit;
-		/***** 4.Setup the USART baud rate *****/
-		/*
-		 * USARTDIV = Fclk / (16 * Baudrate)
-		 * USARTDIV_MUL100 = uint32((100 *Fclk ) / (16 * Baudrate) == (25 *Fclk ) / (4* Baudrate) )
-		 * DIV_Mantissa_MUL100 = Integer Part (USARTDIV ) * 100
-		 * DIV_Mantissa = Integer Part (USARTDIV )
-		 * DIV_Fraction = (( USARTDIV_MUL100 - DIV_Mantissa_MUL100 ) * 16 ) / 100
-		 * */
-		Mantissa = (uint16)(Fclk/(16*USARTConfig->Boud_Rate));
-		Div_Mul100 = ((25*Fclk)/(4*USARTConfig->Boud_Rate));
-		Mantissa_Mul100 = Mantissa*100;
-		Friction = (16*(Div_Mul100 - Mantissa_Mul100))/100;
-		USARTx->BRR.bit.DIV_Mantissa = Mantissa;
-		USARTx->BRR.bit.DIV_Fraction = Friction;
+void MCAL_USART_init(USART_Config_t *USARTConfig){
+	uint16 UBRR_Value;
+	//1. Setup the Frame format >> data bits, parity bit type and number of stop bits.
 
-		/***** 5.Enable TX/RX *****/
-		USARTx->CR1.bit.RE_TE = USARTConfig->USART_Mode;
-		/***** 6.Enable/Disable hardware flow control RTS/CTS *****/
-		USARTx->CR3.bit.RTSE_CTSE = USARTConfig->HwFlowCtrl;
+	/*The UCSRC Register shares the same I/O location as the UBRRH Register. See the
+	 * “Accessing UBRRH/ UCSRC Registers” on page 156 section which describes how to
+	 * access this register.
+	 * • Bit 7 – URSEL: Register Select
+	 * This bit selects between accessing the UCSRC or the UBRRH Register
+	 * 1 For UCSRC , 0 for UBRRH */
+	UCSRC->bit.URSEL = 1; 	//for access UCSRC Register
+	UCSRC->bit.UMSEL = 0; 	//selects Asynchronous Mode
 
+	//Select the required data bit
+	UCSRC->bit.UCSZ = (USARTConfig->Data_Length);
+	if(USARTConfig->Data_Length  == DATE_9B){
+		UCSRB->bit.UCSZ2 = 1; //for 9 data bits
 	}
+
+	//Select the required parity
+	UCSRC->bit.UPM = (USARTConfig->Parity);
+
+	//Select the stop bit
+	UCSRC->bit.USBS = (USARTConfig->Stop_Bit);
+
+	//2. Setup the USART baud rate.
+
+	UCSRA->bit.U2X = 0; //Asynchronous Normal Mode (U2X = 0)
+	UBRR_Value = (uint16)round((F_CPU/(16*USARTConfig->Boud_Rate)))-1;
+	UBRRL = (UBRR_Value & (0x00ff));
+	/* This bit selects between accessing the UCSRC or the UBRRH Register
+	 * 1 For UCSRC , 0 for UBRRH */
+	UBRRH->bit.URSEL = 0; 	//for access UCSRC Register
+	UBRRH->bit.UBRR = (UBRR_Value >> 8);
+
+	//3. Enable the USART.
+	UCSRB->bit.TXEN_RXEN = USARTConfig->USART_Mode;
 }
 
 /************************************************************************************
  * Function Name	: MCAL_USART_deInit
  * Description		: Functional responsible for reset the all USART register.
  * 					  Disable USART.
- * Parameters (in)	: USARTx_ID - ID Number of UART instance
+ * Parameters (in)	: None
  * Return value		: None
  * Note				: None
  ************************************************************************************/
-void MCAL_USART_deInit(USART_Instance_e USARTx_ID){
-	USART_TypeDef * USARTx;
-	boolean error = FALSE;
-	USARTx = USART_instance[USARTx_ID];
-	//Check if inputs is invalid
-	if(USARTx == NULL ){
-		error = TRUE;
-	}
-	if(error == FALSE){
-		/*Reset USART*/
-		if(USARTx_ID == USART1_ID){
-			RCC_USART1_RESET();
-		}else if(USARTx_ID == USART2_ID){
-			RCC_USART2_RESET();
-		}else if(USARTx_ID == USART3_ID){
-			RCC_USART3_RESET();
-		}
-	}
-}
-/************************************************************************************
- * Function Name	: MCAL_USART_setCallBackFunc
- * Description		: Functional responsible Enable USART interrupt and set call back Function.
- * 					  Disable USART.
- * Parameters (in)	: USARTx_ID - ID Number of UART instance
- * 					  IRQx - IRQ Type depend on @REF: USART_IRQ_Types
- * 					  callBackFunc - Function that is called when interrupt is triggered
- * Return value		: None
- * Note				: None
- ************************************************************************************/
-void MCAL_USART_setCallBackFunc(USART_Instance_e USARTx_ID,USART_IRQ_e IRQx,void (*callBackFunc)()){
-	USART_TypeDef * USARTx;
-	boolean error = FALSE;
-	USARTx = USART_instance[USARTx_ID];
-	if(USARTx == NULL || callBackFunc == NULL){
-		error = TRUE;
-	}
-	if(error == FALSE){
-		//Enable NVIC IRQ
-		if(USARTx_ID == USART1_ID){
-			NVIC_IRQ37_USART1_Enable();
-		}else if(USARTx_ID == USART2_ID){
-			NVIC_IRQ38_USART2_Enable();
-		}else if(USARTx_ID == USART3_ID){
-			NVIC_IRQ39_USART3_Enable();
-		}
-		//Enable UART IRQ
-		SET_BIT(USARTx->CR1.ALL_REG,IRQx);
-		GP__callBackFunc[(IRQx-IRQ_SHIFT)] = callBackFunc;
-	}
+void MCAL_USART_deInit(){
+	//reset the all USART register;
+	UCSRA->ALL_REG = 0x20;
+	UCSRB->ALL_REG = 0x00;
+	UCSRC->ALL_REG = 0x86;
+	UBRRL = 0x00;
+	UBRRH->ALL_REG = 0x00;
+
 }
 /************************************************************************************
  * Function Name	: MCAL_USART_sendData
- * Description		: Functional responsible to send data by USART.
- * Parameters (in)	: USARTx_ID - ID Number of UART instance
- *  				  TXD_Buffer : data to be send by USART
- *  				  Pooling - Select [POOLING_ENABLE - POOLING_DISABLE]
+ * Description		: Functional responsible to send Data by USART.
+ * Parameters (in)	: data : Data to be send by USART
  * Return value		: None
  * Note				: None
  ************************************************************************************/
-void MCAL_USART_sendData(USART_Instance_e USARTx_ID,uint16 TXD_Buffer,USART_PoolingMechanism_e Pooling){
-	USART_TypeDef * USARTx;
-	boolean error = FALSE;
-	USARTx = USART_instance[USARTx_ID];
-	if(USARTx == NULL ){
-		error = TRUE;
+void MCAL_USART_sendData(uint16 data,USART_mechanism_e Mechanism){
+	if(Mechanism == POOLING_ENABLE){
+		while(UCSRA->bit.UDRE != TRUE ){}
 	}
-	if(error == FALSE){
-		if(Pooling == POOLING_ENABLE){
-			//Wait until TX buffer is empty
-			while(USARTx->SR.bit.TXE != TRUE);
-		}
-		/* When transmitting with the parity enabled (PCE bit set to 1 in the USART_CR1 register),
-		 * the value written in the MSB (bit 7 or bit 8 depending on the data length) has no effect
-		 * because it is replaced by the parity.
-		 * When receiving with the parity enabled, the value read in the MSB bit is the received parity bit.
-		 * */
-		if(Global_USART_Config[USARTx_ID]->Data_Length == USART_DATE_lENGTH_8_BITS){
-			USARTx->DR = (TXD_Buffer & 0x00ff);
-		}else if(Global_USART_Config[USARTx_ID]->Data_Length == USART_DATE_lENGTH_9_BITS){
-			USARTx->DR = (TXD_Buffer & 0x01ff);
-		}
-
-	}
-}
-/************************************************************************************
- * Function Name	: MCAL_USART_receiveData
- * Description		: Functional responsible to receive data by USART.
- * Parameters (in)	: USARTx_ID - ID Number of UART instance
- *  				  Pooling - Select [POOLING_ENABLE - POOLING_DISABLE]
- * Return value		: Data to be received
- * Note				: None
- ************************************************************************************/
-uint16 MCAL_USART_receiveData(USART_Instance_e USARTx_ID,USART_PoolingMechanism_e Pooling){
-	USART_TypeDef * USARTx;
-	boolean error = FALSE;
-	uint16 RXDbuffer=0;
-	USARTx = USART_instance[USARTx_ID];
-	if(USARTx == NULL ){
-		error = TRUE;
-	}
-	if(error == FALSE){
-		if(Pooling == POOLING_ENABLE){
-			while(USARTx->SR.bit.RXNE != TRUE);
-		}
-		if(Global_USART_Config[USARTx_ID]->Parity == USART_DISAPLE_PARITY){
-			if(Global_USART_Config[USARTx_ID]->Data_Length == USART_DATE_lENGTH_8_BITS){
-				RXDbuffer = (USARTx->DR & 0x00ff);
-			}else if(Global_USART_Config[USARTx_ID]->Data_Length == USART_DATE_lENGTH_9_BITS){
-				RXDbuffer = (USARTx->DR & 0x01ff);
-			}
-		}else{
-			//the value written in the MSB (bit 7 or bit 8 depending on the data length) has no effect
-			//because it is replaced by the parity
-			if(Global_USART_Config[USARTx_ID]->Data_Length == USART_DATE_lENGTH_8_BITS){
-				RXDbuffer = (USARTx->DR & 0x007f);
-			}else if(Global_USART_Config[USARTx_ID]->Data_Length == USART_DATE_lENGTH_9_BITS){
-				RXDbuffer = (USARTx->DR & 0x00ff);
-			}
-		}
-	}
-	return RXDbuffer;
-}
-
-/************************************************************************************
- * Function Name	: MCAL_USART_WAIT_TC
- * Description		: Functional responsible to wait until TC flag is set;
- * Parameters (in)	: USARTx_ID - ID Number of UART instance
- * Return value		: Data to be received
- * Note				: None
- ************************************************************************************/
-void MCAL_USART_WAIT_TC(USART_Instance_e USARTx_ID){
-	USART_TypeDef * USARTx;
-	boolean error = FALSE;
-	USARTx = USART_instance[USARTx_ID];
-	if(USARTx == NULL ){
-		error = TRUE;
-	}
-	if(error == FALSE){
-		while(USARTx->SR.bit.TC != TRUE);
+	UDR = data;
+	if(Mechanism == POOLING_ENABLE){
+		//wait to USART Transmit Complete
+		while(UCSRA->bit.TXC != TRUE){}
 	}
 }
 
 /************************************************************************************
- * Function Name	: MCAL_USART_GPIO_SET_PINS
- * Description		: Functional responsible to set GPIO pins of USART.
- * Parameters (in)	: USARTx_ID - ID Number of UART instance
+ * Function Name	: MCAL_USART_sendData
+ * Description		: Functional responsible to receive character by USART.
+ * Parameters (in)	: None
  * Return value		: Character to be received
  * Note				: None
  ************************************************************************************/
-/* USART1 :
- * PA9  >> TX
- * PA10 >> RX
- * PA11 >> CTS
- * PA12 >> RTS
- * */
-/* USART2 :
- * PA2 >> TX
- * PA3 >> RX
- * PA0 >> CTS
- * PA1 >> RTS
- * */
-/* USART3 :
- * PB10  >> TX
- * PB11 >> RX
- * PB13 >> CTS
- * PB14 >> RTS
- * */
-//========================================================================================================
-//USART GPIO PINS
-//{ TX_PIN , RX,PIN , CTS_PIN , RTS_PIN}
-static uint8 USARTxPORT[NUM_OF_UART_INSTANCES]={
-		GPIO_PORTA,
-		GPIO_PORTA,
-		GPIO_PORTB
-};
-static uint8 USARTxPINS[NUM_OF_UART_INSTANCES][4]={
-		{GPIO_PIN_9,GPIO_PIN_10,GPIO_PIN_11,GPIO_PIN_12},
-		{GPIO_PIN_2,GPIO_PIN_3,GPIO_PIN_0,GPIO_PIN_1},
-		{GPIO_PIN_10,GPIO_PIN_11,GPIO_PIN_13,GPIO_PIN_14}
-};
-//========================================================================================================
-void MCAL_USART_GPIO_SET_PINS(USART_Instance_e USARTx_ID){
-	USART_TypeDef * USARTx;
-	boolean error = FALSE;
-	GPIO_PinConfig_t Pin_Config;
-	USARTx = USART_instance[USARTx_ID];
-	if(USARTx == NULL ){
-		error = TRUE;
+uint16 MCAL_USART_receiveData(USART_mechanism_e Mechanism){
+	uint8 ReceivedDate=0;
+	if(Mechanism == POOLING_ENABLE){
+		while(UCSRA->bit.RXC != TRUE ){}
 	}
-	if(error == FALSE){
-		//Configure TX Pin
-		Pin_Config = (GPIO_PinConfig_t){USARTxPINS[USARTx_ID][0],GPIO_AF_OUTPUT_PP,GPIO_SPEED_2_MHZ};
-		MCAL_GPIO_init(USARTxPORT[USARTx_ID], &Pin_Config);
-		//Configure RX Pin
-		Pin_Config = (GPIO_PinConfig_t){USARTxPINS[USARTx_ID][1],GPIO_INUPUT_FLOATING,GPIO_SPEED_2_MHZ};
-		MCAL_GPIO_init(GPIO_PORTA, &Pin_Config);
-
-		if (Global_USART_Config[USARTx_ID]->HwFlowCtrl == USART_HW_FLOW_CTS
-				|| Global_USART_Config[USARTx_ID]->HwFlowCtrl == USART_HW_FLOW_RTS_CTS) {
-			//Configure CTS Pin
-			Pin_Config = (GPIO_PinConfig_t){USARTxPINS[USARTx_ID][2],GPIO_INUPUT_FLOATING,GPIO_SPEED_2_MHZ};
-			MCAL_GPIO_init(USARTxPORT[USARTx_ID], &Pin_Config);
-
-		}
-		if (Global_USART_Config[USARTx_ID]->HwFlowCtrl == USART_HW_FLOW_RTS
-				|| Global_USART_Config[USARTx_ID]->HwFlowCtrl == USART_HW_FLOW_RTS_CTS) {
-			//Configure RTS Pin
-			Pin_Config = (GPIO_PinConfig_t){USARTxPINS[USARTx_ID][3],GPIO_AF_OUTPUT_PP,GPIO_SPEED_2_MHZ};
-			MCAL_GPIO_init(USARTxPORT[USARTx_ID], &Pin_Config);
-		}
-	}
+	ReceivedDate = UDR;
+	return ReceivedDate;
 }
-//==========================================================================================================
+
+/************************************************************************************
+ * Function Name	: MCAL_USART_sendDataPeriodicCheck
+ * Description		: Functional responsible to send Data by USART by checking Buffer.
+ * Parameters (in)	: data : character to be send by USART
+ * Return value		: Status of operation
+ * Note				: None
+ ************************************************************************************/
+boolean MCAL_USART_sendDataPeriodicCheck(uint16 data){
+	boolean status = FALSE;
+	if(UCSRA->bit.UDRE == TRUE){
+		UDR = data;
+		status = TRUE;
+	}
+	return status;
+}
+/************************************************************************************
+ * Function Name	: MCAL_USART_sendDataPeriodicCheck
+ * Description		: Functional responsible to send Data by USART by checking Buffer.
+ * Parameters (in)	: data : pointer to save receive data
+ * Return value		: Status of operation
+ * Note				: None
+ ************************************************************************************/
+boolean MCAL_USART_receiveDataPeriodicCheck(uint16 *data){
+	boolean status = FALSE;
+	if(UCSRA->bit.RXC == TRUE){
+		*data = UDR;
+		status = TRUE;
+	}
+	return status;
+}
+/************************************************************************************
+ * Function Name	: MCAL_USART_sendString
+ * Description		: Functional responsible to send string by USART.
+ * Parameters (in)	: data : pointer to start character of string to be send by USART
+ * Return value		: None
+ * Note				: Terminate string by character '#'
+ ************************************************************************************/
+void MCAL_USART_sendString(char* data){
+	uint32 count=0;
+	//Send Character by character
+	while(data[count]!= TerminateChar){
+		MCAL_USART_sendData(data[count],POOLING_ENABLE);
+		count++;
+	}
+	MCAL_USART_sendData(data[count],POOLING_ENABLE);
+}
+/************************************************************************************
+ * Function Name		: MCAL_USART_sendData
+ * Description			: Functional responsible to receive string by USART.
+ * Parameters (in/out)	: string : pointer to store received string
+ * Return value			: None
+ * Note					: None
+ ************************************************************************************/
+void MCAL_USART_receiveString(char *string){
+	uint8 count=0;
+	do{
+		string[count]=MCAL_USART_receiveData(POOLING_ENABLE);
+	}while(string[count++] != TerminateChar);
+	count--;
+	string[count]='\0';
+}
+
+/************************************************************************************
+ * Function Name		: MCAL_USART_sendSInteger
+ * Description			: Functional responsible to Send integer by USART.
+ * Parameters (in/out)	: string : pointer to store received string
+ * Return value			: None
+ * Note					: None
+ ************************************************************************************/
+void MCAL_USART_sendSInteger(uint32 data){
+	uint8 *PtoCh = (uint8*)&data;
+	uint8 count;
+	//Send Character by character
+	for(count=0;count<4;count++){
+		MCAL_USART_sendData(*PtoCh,POOLING_ENABLE);
+		PtoCh++;
+	};
+}
+
+/************************************************************************************
+ * Function Name		: MCAL_USART_ReceiveInteger
+ * Description			: Functional responsible to receive string by USART.
+ * Parameters (in/out)	: string : pointer to store received string
+ * Return value			: None
+ * Note					: None
+ ************************************************************************************/
+uint32 MCAL_USART_ReceiveInteger(){
+	uint8 count;
+	uint32 intNum;
+	uint8 *PtoCh = (uint8*)&intNum;
+	//Send Character by character
+	for(count=0;count<4;count++){
+		*PtoCh=MCAL_USART_receiveData(POOLING_ENABLE);
+		PtoCh++;
+	};
+	return intNum;
+}
+/************************************************************************************
+ * Function Name		: MCAL_USART_setCallBackFun
+ * Description			: Functional responsible to set function that
+ * 						  will be called when interrupt occur.
+ * Parameters (in/out)	: IRQx - interrupt source
+ * 						  callback - call back function
+ * Return value			: None
+ * Note					: None
+ ************************************************************************************/
+void MCAL_USART_setCallBackFun(USART_IRQ_e IRQx,void (*callback)()){
+	if(callback != NULL){
+		GP_callBackFUNC[IRQx-5] = callback;
+	}
+
+}
+/************************************************************************************
+ * Function Name		: MCAL_USART_EnableInterrupt
+ * Description			: Functional responsible to enable interrupt
+ * Parameters (in/out)	: IRQx - interrupt source
+ * Return value			: None
+ * Note					: None
+ ************************************************************************************/
+void MCAL_USART_EnableInterrupt(USART_IRQ_e IRQx){
+	SET_BIT(UCSRB->ALL_REG,IRQx);
+}
+/************************************************************************************
+ * Function Name		: MCAL_USART_DisableInterrupt
+ * Description			: Functional responsible to Disable interrupt
+ * Parameters (in/out)	: IRQx - interrupt source
+ * Return value			: None
+ * Note					: None
+ ************************************************************************************/
+void MCAL_USART_DisableInterrupt(USART_IRQ_e IRQx){
+	CLEAR_BIT(UCSRB->ALL_REG,IRQx);
+}
 
 /*******************************************************************************
- *                            			ISR	  		                 			*
+ *                             			ISR			                           	*
  *******************************************************************************/
-void USART1_IRQHandler()         			/* USART1 global interrupt*/
-{
-	if(GP__callBackFunc != NULL){
-		(*GP__callBackFunc[USART1_ID])();
+
+/* USART Data Register Empty interrupt */
+ISR(USART_UDRE_vect){
+	if(GP_callBackFUNC[0] != NULL){
+		(*GP_callBackFUNC[0])();
 	}
 }
-void USART2_IRQHandler()         			/* USART2 global interrupt*/
-{
-	if(GP__callBackFunc != NULL){
-		(*GP__callBackFunc[USART2_ID])();
+
+/* USART, RX Complete interrupt*/
+ISR(USART_RXC_vect){
+	if(GP_callBackFUNC[1] != NULL){
+		(*GP_callBackFUNC[1])();
 	}
 }
-void USART3_IRQHandler()         			/* USART3 global interrupt*/
-{
-	if(GP__callBackFunc != NULL){
-		(*GP__callBackFunc[USART3_ID])();
-	}}
+
+/* USART, TX Complete interrupt*/
+ISR(USART_TXC_vect){
+	if(GP_callBackFUNC[2] != NULL){
+		(*GP_callBackFUNC[2])();
+	}
+}

@@ -56,21 +56,26 @@ typedef enum{
 //@REF: USART_HwFlowCtrl_e mechanism
 typedef enum{
 	USART_HW_FLOW_CTRL_NONE,
+	USART_HW_FLOW_RTS,
+	USART_HW_FLOW_CTS,
+	USART_HW_FLOW_RTS_CTS
 }USART_HwFlowCtrl_e;
 
 typedef struct{
-	USART_Mode_e USART_Mode;				//Specifies USART Mode as TX/RX
-	//This parameter can be a value of @REF: USART_Mode
-	USART_BoudRate_e Boud_Rate;				//Specifies baud rate of USART
-	//This parameter can be a value of @REF: USART_BoudRate_e
-	USART_DateLength_e Data_Length;	//Specifies the Number of data bits of USART frame
-	//This parameter can be a value of @REF: USART_DataBit
-	USART_Parity_e Parity;			//Specifies the parity of USART  frame
-	//This parameter can be a value of @REF: USART_Parity
-	USART_StopBit_e Stop_Bit;		//Specifies the number of stop bits of USART  frame
-	//This parameter can be a value of @REF: USART_StopBit
-	USART_HwFlowCtrl_e HwFlowCtrl;	//Specifies Hardware flow control of USART
-	//This parameter can be a value of @REF: USART_HwFlowCtrl_e
+	USART_Mode_e USART_Mode;			//Specifies USART Mode as TX/RX
+										//This parameter can be a value of @REF: USART_Mode
+	USART_BoudRate_e Boud_Rate;			//Specifies baud rate of USART
+										//This parameter can be a value of @REF: USART_BoudRate_e
+	USART_DateLength_e Data_Length;		//Specifies the Number of data bits of USART frame
+										//This parameter can be a value of @REF: USART_DataBit
+	USART_Parity_e Parity;				//Specifies the parity of USART  frame
+										//This parameter can be a value of @REF: USART_Parity
+	USART_StopBit_e Stop_Bit;			//Specifies the number of stop bits of USART  frame
+										//This parameter can be a value of @REF: USART_StopBit
+	USART_HwFlowCtrl_e HwFlowCtrl;		//Specifies Hardware flow control of USART
+										//This parameter can be a value of @REF: USART_HwFlowCtrl_e
+	uint8 IRQ_Enable;					//Enable/Disable TX/RX interrupt
+										//This parameter can be a value of @REF: USART_HwFlowCtrl_e
 }USART_Config_t;
 
 typedef enum{
@@ -98,9 +103,13 @@ typedef enum{
  *******************************************************************************/
 #define NUM_OF_UART_INSTANCES (3U)
 #define NUM_OF_UART_IRQ (4U)
-
 #define IRQ_SHIFT (5U)
-
+/* USART1 :				USART2 :			USART3 :
+ * PA9  >> TX			PA2 >> TX			PB10  >> TX
+ * PA10 >> RX			PA3 >> RX			PB11 >> RX
+ * PA11 >> CTS			PA0 >> CTS			PB13 >> CTS
+ * PA12 >> RTS			PA1 >> RTS			PB14 >> RTS
+ * */
 
 /*******************************************************************************
  *					APIs Supported by "MCAL USART DRIVER" 	                   *
