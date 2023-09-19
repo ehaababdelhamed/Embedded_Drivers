@@ -23,7 +23,7 @@ typedef enum{
 	USART_MODE_TX_RX
 }USART_Mode_e;
 
-//@REF: USART_BAUDRATEs_t
+//@REF: USART_USART_BAUDRATEs_t
 /*
  * For F_CPU 1-2 MHZ Preferred baud rate up to 9600
  * For F_CPU 4 MHZ Preferred baud rate up to 38400
@@ -32,24 +32,24 @@ typedef enum{
  *
  */
 typedef enum{
-	BAUDRATE_2400=2400,BAUDRATE_4800=4800,BAUDRATE_9600=9600,BAUDRATE_14400=14400,
-	BAUDRATE_19200=19200,BAUDRATE_28800=28800,BAUDRATE_38400=38400,
-	BAUDRATE_57600=57600,BAUDRATE_76800=76800,BAUDRATE_115200=115200,
+	USART_BAUDRATE_2400=2400,USART_BAUDRATE_4800=4800,USART_BAUDRATE_9600=9600,USART_BAUDRATE_14400=14400,
+	USART_BAUDRATE_19200=19200,USART_BAUDRATE_28800=28800,USART_BAUDRATE_38400=38400,
+	USART_BAUDRATE_57600=57600,USART_BAUDRATE_76800=76800,USART_BAUDRATE_115200=115200,
 }USART_BoudRate_e;
 
 //@REF: USART_DataBit
 typedef enum{
-	DATE_5B,DATE_6B,DATE_7B,DATE_8B,DATE_9B=7
+	USART_DATE_5B,USART_DATE_6B,USART_DATE_7B,USART_DATE_8B,USART_DATE_9B=7
 }USART_DateLength_e;
 
 //@REF: USART_Parity
 typedef enum{
-	PARITY_DISABLE,PARITY_EVEN=2,PARITY_ODD
+	USART_PARITY_DISABLE,USART_PARITY_EVEN=2,USART_PARITY_ODD
 }USART_Parity_e;
 
 //@REF: USART_StopBit
 typedef enum{
-	STOP_1B,STOP_2B
+	USART_STOP_1B,USART_STOP_2B
 }USART_StopBit_e;
 
 typedef struct{
@@ -67,8 +67,8 @@ typedef struct{
 
 
 typedef enum{
-	POOLING_ENABLE,
-	POOLING_DISABLE,
+	USART_POOLING_DISABLE,
+	USART_POOLING_ENABLE,
 }USART_mechanism_e;
 
 //@REF: USART_IRQ_Types
@@ -81,7 +81,6 @@ typedef enum{
 /*******************************************************************************
  *                             	USART Definition                             	*
  *******************************************************************************/
-#define F_CPU (8000000U)
 #define TerminateChar '\r'
 
 /*******************************************************************************
@@ -127,7 +126,7 @@ void MCAL_USART_sendData(uint16 data,USART_mechanism_e Mechanism);
  * Return value		: Character to be received
  * Note				: period
  ************************************************************************************/
-uint16 MCAL_USART_receiveData(USART_mechanism_e Mechanism);
+uint8 MCAL_USART_receiveData(USART_mechanism_e Mechanism);
 
 /************************************************************************************
  * Function Name	: MCAL_USART_sendDataPeriodicCheck

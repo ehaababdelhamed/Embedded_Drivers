@@ -10,9 +10,9 @@
  *******************************************************************************/
 #include "Atmega32.h"
 #include <math.h>
+#include "lcd.h"
 #include "USART.h"
 #include "Atmega32_interrupt.h"
-
 
 void (*GP_callBackFUNC[3])();
 /*******************************************************************************
@@ -21,9 +21,9 @@ void (*GP_callBackFUNC[3])();
 /************************************************************************************
  * Function Name	: MCAL_USART_init
  * Description		: Functional responsible for Initialize the USART device by:
- * 1. Setup the Frame format like number of data bits, parity bit type and number of stop bits.
- * 2. Setup the USART baud rate.
- * 3. Enable the USART.
+ * 1. Enable the USART.
+ * 2. Setup the Frame format >> data bits, parity bit type and number of stop bits.
+ * 3. Setup the USART baud rate.
  * Parameters (in)	: USARTConfig- pointer to USART configuration parameters
  * [baud rate - Number of data bits -Parity type - Number of stop bits]
  * Return value		: None
@@ -31,7 +31,13 @@ void (*GP_callBackFUNC[3])();
  ************************************************************************************/
 void MCAL_USART_init(USART_Config_t *USARTConfig){
 	uint16 UBRR_Value;
-	//1. Setup the Frame format >> data bits, parity bit type and number of stop bits.
+
+	UCSRA->bit.U2X = 1; //Asynchronous Double Speed Mode(U2X = 1)
+
+	//1. Enable the USART.
+	UCSRB->bit.TXEN_RXEN = USARTConfig->USART_Mode;
+
+	//2. Setup the Frame format >> data bits, parity bit type and number of stop bits.
 
 	/*The UCSRC Register shares the same I/O location as the UBRRH Register. See the
 	 * “Accessing UBRRH/ UCSRC Registers” on page 156 section which describes how to
@@ -39,33 +45,15 @@ void MCAL_USART_init(USART_Config_t *USARTConfig){
 	 * • Bit 7 – URSEL: Register Select
 	 * This bit selects between accessing the UCSRC or the UBRRH Register
 	 * 1 For UCSRC , 0 for UBRRH */
-	UCSRC->bit.URSEL = 1; 	//for access UCSRC Register
-	UCSRC->bit.UMSEL = 0; 	//selects Asynchronous Mode
-
-	//Select the required data bit
-	UCSRC->bit.UCSZ = (USARTConfig->Data_Length);
-	if(USARTConfig->Data_Length  == DATE_9B){
+	UCSRC =(1<<7)|(((USARTConfig->Parity)&0x03)<<4)|(((USARTConfig->Stop_Bit)&0x01)<<3)|((USARTConfig->Data_Length&0x03)<<1);
+	if(USARTConfig->Data_Length  == USART_DATE_9B){
 		UCSRB->bit.UCSZ2 = 1; //for 9 data bits
 	}
 
-	//Select the required parity
-	UCSRC->bit.UPM = (USARTConfig->Parity);
-
-	//Select the stop bit
-	UCSRC->bit.USBS = (USARTConfig->Stop_Bit);
-
-	//2. Setup the USART baud rate.
-
-	UCSRA->bit.U2X = 0; //Asynchronous Normal Mode (U2X = 0)
-	UBRR_Value = (uint16)round((F_CPU/(16*USARTConfig->Boud_Rate)))-1;
-	UBRRL = (UBRR_Value & (0x00ff));
-	/* This bit selects between accessing the UCSRC or the UBRRH Register
-	 * 1 For UCSRC , 0 for UBRRH */
-	UBRRH->bit.URSEL = 0; 	//for access UCSRC Register
-	UBRRH->bit.UBRR = (UBRR_Value >> 8);
-
-	//3. Enable the USART.
-	UCSRB->bit.TXEN_RXEN = USARTConfig->USART_Mode;
+	//3. Setup the USART baud rate.
+	UBRR_Value = (uint16)(((float)F_CPU/(8.0*USARTConfig->Boud_Rate))-1);
+	UBRRH = ((UBRR_Value & 0xff00)>>8);
+	UBRRL = UBRR_Value;
 }
 
 /************************************************************************************
@@ -80,9 +68,9 @@ void MCAL_USART_deInit(){
 	//reset the all USART register;
 	UCSRA->ALL_REG = 0x20;
 	UCSRB->ALL_REG = 0x00;
-	UCSRC->ALL_REG = 0x86;
+	UCSRC = 0x86;
 	UBRRL = 0x00;
-	UBRRH->ALL_REG = 0x00;
+	UBRRH = 0x00;
 
 }
 /************************************************************************************
@@ -93,14 +81,11 @@ void MCAL_USART_deInit(){
  * Note				: None
  ************************************************************************************/
 void MCAL_USART_sendData(uint16 data,USART_mechanism_e Mechanism){
-	if(Mechanism == POOLING_ENABLE){
+	if(Mechanism == USART_POOLING_ENABLE){
 		while(UCSRA->bit.UDRE != TRUE ){}
 	}
-	UDR = data;
-	if(Mechanism == POOLING_ENABLE){
-		//wait to USART Transmit Complete
-		while(UCSRA->bit.TXC != TRUE){}
-	}
+	UDR = (uint8)data;
+
 }
 
 /************************************************************************************
@@ -110,13 +95,11 @@ void MCAL_USART_sendData(uint16 data,USART_mechanism_e Mechanism){
  * Return value		: Character to be received
  * Note				: None
  ************************************************************************************/
-uint16 MCAL_USART_receiveData(USART_mechanism_e Mechanism){
-	uint8 ReceivedDate=0;
-	if(Mechanism == POOLING_ENABLE){
+uint8 MCAL_USART_receiveData(USART_mechanism_e Mechanism){
+	if(Mechanism == USART_POOLING_ENABLE){
 		while(UCSRA->bit.RXC != TRUE ){}
 	}
-	ReceivedDate = UDR;
-	return ReceivedDate;
+	return UDR;
 }
 
 /************************************************************************************
@@ -159,11 +142,10 @@ boolean MCAL_USART_receiveDataPeriodicCheck(uint16 *data){
 void MCAL_USART_sendString(char* data){
 	uint32 count=0;
 	//Send Character by character
-	while(data[count]!= TerminateChar){
-		MCAL_USART_sendData(data[count],POOLING_ENABLE);
+	while(data[count]!= '\0'){
+		MCAL_USART_sendData(data[count],USART_POOLING_ENABLE);
 		count++;
 	}
-	MCAL_USART_sendData(data[count],POOLING_ENABLE);
 }
 /************************************************************************************
  * Function Name		: MCAL_USART_sendData
@@ -175,10 +157,8 @@ void MCAL_USART_sendString(char* data){
 void MCAL_USART_receiveString(char *string){
 	uint8 count=0;
 	do{
-		string[count]=MCAL_USART_receiveData(POOLING_ENABLE);
-	}while(string[count++] != TerminateChar);
-	count--;
-	string[count]='\0';
+		string[count]=MCAL_USART_receiveData(USART_POOLING_ENABLE);
+	}while(string[count++] != '\0');
 }
 
 /************************************************************************************
@@ -193,7 +173,7 @@ void MCAL_USART_sendSInteger(uint32 data){
 	uint8 count;
 	//Send Character by character
 	for(count=0;count<4;count++){
-		MCAL_USART_sendData(*PtoCh,POOLING_ENABLE);
+		MCAL_USART_sendData(*PtoCh,USART_POOLING_ENABLE);
 		PtoCh++;
 	};
 }
@@ -211,7 +191,7 @@ uint32 MCAL_USART_ReceiveInteger(){
 	uint8 *PtoCh = (uint8*)&intNum;
 	//Send Character by character
 	for(count=0;count<4;count++){
-		*PtoCh=MCAL_USART_receiveData(POOLING_ENABLE);
+		*PtoCh=MCAL_USART_receiveData(USART_POOLING_ENABLE);
 		PtoCh++;
 	};
 	return intNum;
@@ -253,9 +233,8 @@ void MCAL_USART_DisableInterrupt(USART_IRQ_e IRQx){
 }
 
 /*******************************************************************************
- *                             			ISR			                           	*
+ *                             			ISR			                           *
  *******************************************************************************/
-
 /* USART Data Register Empty interrupt */
 ISR(USART_UDRE_vect){
 	if(GP_callBackFUNC[0] != NULL){
