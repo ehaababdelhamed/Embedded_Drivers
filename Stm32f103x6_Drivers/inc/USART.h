@@ -74,13 +74,11 @@ typedef struct{
 										//This parameter can be a value of @REF: USART_StopBit
 	USART_HwFlowCtrl_e HwFlowCtrl;		//Specifies Hardware flow control of USART
 										//This parameter can be a value of @REF: USART_HwFlowCtrl_e
-	uint8 IRQ_Enable;					//Enable/Disable TX/RX interrupt
-										//This parameter can be a value of @REF: USART_HwFlowCtrl_e
 }USART_Config_t;
 
 typedef enum{
-	POOLING_ENABLE,
-	POOLING_DISABLE
+	USART_POOLING_DISABLE,
+	USART_POOLING_ENABLE
 }USART_PoolingMechanism_e;
 
 //@REF: USART_IRQ_Types

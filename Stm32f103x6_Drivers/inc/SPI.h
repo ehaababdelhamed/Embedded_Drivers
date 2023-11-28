@@ -17,8 +17,8 @@
  *******************************************************************************/
 //@REF : SPI_Mode_e
 typedef enum{						//15:BIDIMODE	10:RXONLY	// M 		S		M		S
-	SPI_MODE_FULL_DUPLEX =0, 				//		0			0		//MOSI >> MOSI  & MISO >> MISO
-	SPI_MODE_HALF_DUPLEX=2,					//		1			0		//MOSI >> MISO
+	SPI_MODE_FULL_DUPLEX =0, 		//		0			0		//MOSI >> MOSI  & MISO >> MISO
+	SPI_MODE_HALF_DUPLEX=2,			//		1			0		//MOSI >> MISO
 	SPI_MODE_SIMPLEX_RX=1,			//		0			1		//MISO >> MISO
 	SPI_MODE_SIMPLEX_TX = 4			//		0			0		//MOSI >> MOSI
 }SPI_Mode_e;
